@@ -1,40 +1,110 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Globalization; // For parsing double
 
 namespace SeatAllocationOptimizer.Main
 {
     public static class DataParser
     {
-        // Placeholder method for parsing input data.
-        // The actual implementation will depend on the input format (e.g., file path, format type).
-        // It should return a list of BoardingGroup objects (individuals and families).
-        public static List<BoardingGroup> ParseInput(string inputSource) // InputSource could be a file path or other identifier
+        // Parses the input CSV file (format: ID,Type,Revenue,FamilyID,WindowPref)
+        public static List<BoardingGroup> ParseInput(string filePath)
         {
-            Console.WriteLine($"Parsing input from: {inputSource}"); // Placeholder
-            List<BoardingGroup> boardingGroups = new List<BoardingGroup>();
+            Console.WriteLine($"Parsing input from: {filePath}");
+            var passengersByFamily = new Dictionary<string, List<Passenger>>();
+            var individualPassengers = new List<Passenger>();
 
-            // --- Placeholder Data --- 
-            // Replace this with actual parsing logic based on the input format
+            try
+            {
+                using (var reader = new StreamReader(filePath))
+                {
+                    string? line;
+                    int lineNumber = 0;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        lineNumber++;
+                        if (string.IsNullOrWhiteSpace(line)) continue; // Skip empty lines
 
-            // Example: Create some sample passengers and families
-            var p1 = new Passenger(true, 150.0); // Adult, 150 revenue
-            var p2 = new Passenger(false, 50.0);  // Child, 50 revenue
-            var p3 = new Passenger(true, 120.0); 
-            var p4 = new Passenger(true, 130.0);
-            var p5 = new Passenger(false, 40.0);
+                        string[] parts = line.Split(',');
+                        if (parts.Length < 4) // Expecting at least 4 parts
+                        {
+                            Console.WriteLine($"Warning: Skipping malformed line {lineNumber}: {line}");
+                            continue;
+                        }
 
-            var family1 = new Family();
-            family1.AddMember(p1);
-            family1.AddMember(p2);
+                        try
+                        {
+                            // Parse basic info
+                            // int id = int.Parse(parts[0].Trim()); // ID not strictly needed for allocation logic yet
+                            bool isAdult = parts[1].Trim().Equals("Adult", StringComparison.OrdinalIgnoreCase);
+                            double revenue = double.Parse(parts[2].Trim(), CultureInfo.InvariantCulture);
+                            string familyId = parts[3].Trim();
+                            int seatsNeeded = 1; // Assuming 1 seat per passenger based on current classes
+                            // TODO: Consider if input format could specify >1 seat needed per passenger
 
-            boardingGroups.Add(new BoardingGroup(family1));
-            boardingGroups.Add(new BoardingGroup(p3));
-            boardingGroups.Add(new BoardingGroup(p4));
-            boardingGroups.Add(new BoardingGroup(p5));
+                            var passenger = new Passenger(isAdult, revenue, seatsNeeded);
 
-            // --- End Placeholder Data ---
+                            if (familyId == "-")
+                            {
+                                individualPassengers.Add(passenger);
+                            }
+                            else
+                            {
+                                if (!passengersByFamily.ContainsKey(familyId))
+                                {
+                                    passengersByFamily[familyId] = new List<Passenger>();
+                                }
+                                passengersByFamily[familyId].Add(passenger);
+                            }
+                        }
+                        catch (FormatException ex)
+                        {
+                            Console.WriteLine($"Warning: Skipping line {lineNumber} due to parsing error ({ex.Message}): {line}");
+                        }
+                        catch (Exception ex) // Catch other potential errors per line
+                        {
+                             Console.WriteLine($"Warning: Skipping line {lineNumber} due to unexpected error ({ex.Message}): {line}");
+                        }
+                    }
+                }
+            }
+            catch (FileNotFoundException)
+            {
+                Console.WriteLine($"Error: Input file not found at {filePath}");
+                return new List<BoardingGroup>(); // Return empty list
+            }
+             catch (IOException ex)
+            {
+                Console.WriteLine($"Error: Could not read input file {filePath}. {ex.Message}");
+                return new List<BoardingGroup>(); // Return empty list
+            }
 
-            Console.WriteLine($"Parsed {boardingGroups.Count} boarding groups."); // Placeholder
+
+            // Create BoardingGroup objects
+            var boardingGroups = new List<BoardingGroup>();
+
+            // Add individuals
+            foreach (var individual in individualPassengers)
+            {
+                boardingGroups.Add(new BoardingGroup(individual));
+            }
+
+            // Add families
+            foreach (var kvp in passengersByFamily)
+            {
+                var family = new Family();
+                foreach (var member in kvp.Value)
+                {
+                    family.AddMember(member);
+                }
+                 if(family.Members.Any())
+                 {
+                    boardingGroups.Add(new BoardingGroup(family));
+                 }
+            }
+
+            Console.WriteLine($"Parsed {boardingGroups.Count} boarding groups ({individualPassengers.Count} individuals, {passengersByFamily.Count} families).");
             return boardingGroups;
         }
     }
