@@ -26,44 +26,13 @@ namespace SeatAllocationOptimizer.Main
                         lineNumber++;
                         if (string.IsNullOrWhiteSpace(line)) continue; // Skip empty lines
 
-                        Passenger? parsedPassenger = ParseLine(line, lineNumber);
-                        if (parsedPassenger != null)
+                        var (parsedPassenger, familyId) = ParseLine(line, lineNumber);
+
+                        if (parsedPassenger != null && familyId != null) // Check both passenger and familyId parsed ok
                         {
-                            // Need family ID from the line again for grouping
-                            string[] parts = line.Split(',');
-                            if (parts.Length >= 4)
-                            {
-                                string familyId = parts[3].Trim();
-                                if (familyId == "-")
-                                {
-                                    individualPassengers.Add(parsedPassenger);
-                                }
-                                else
-                                {
-                                    if (!passengersByFamily.ContainsKey(familyId))
-                                    {
-                                        passengersByFamily[familyId] = new List<Passenger>();
-                                    }
-                            Console.WriteLine($"Warning: Skipping malformed line {lineNumber} (expected 5+ parts): {line}");
-                            continue;
-                        }
-
-                        try
-                        {
-                            // Parse basic info
-                            // int id = int.Parse(parts[0].Trim()); // ID not strictly needed for allocation logic yet
-                            bool isAdult = parts[1].Trim().Equals("Adult", StringComparison.OrdinalIgnoreCase);
-                            double revenue = double.Parse(parts[2].Trim(), CultureInfo.InvariantCulture);
-                            string familyId = parts[3].Trim();
-                            int seatsNeeded = 1; // Assuming 1 seat per passenger based on current classes
-                            bool wantsWindow = parts[4].Trim().Equals("Yes", StringComparison.OrdinalIgnoreCase);
-                            // TODO: Consider if input format could specify >1 seat needed per passenger
-
-                            var passenger = new Passenger(isAdult, revenue, seatsNeeded, wantsWindow);
-
                             if (familyId == "-")
                             {
-                                individualPassengers.Add(passenger);
+                                individualPassengers.Add(parsedPassenger);
                             }
                             else
                             {
@@ -71,17 +40,10 @@ namespace SeatAllocationOptimizer.Main
                                 {
                                     passengersByFamily[familyId] = new List<Passenger>();
                                 }
-                                passengersByFamily[familyId].Add(passenger);
+                                passengersByFamily[familyId].Add(parsedPassenger);
                             }
                         }
-                        catch (FormatException ex)
-                        {
-                            Console.WriteLine($"Warning: Skipping line {lineNumber} due to parsing error ({ex.Message}): {line}");
-                        }
-                        catch (Exception ex) // Catch other potential errors per line
-                        {
-                             Console.WriteLine($"Warning: Skipping line {lineNumber} due to unexpected error ({ex.Message}): {line}");
-                        }
+                        // If ParseLine returned null passenger or null familyId, it already printed a warning.
                     }
                 }
             }
@@ -122,6 +84,49 @@ namespace SeatAllocationOptimizer.Main
 
             Console.WriteLine($"Parsed {boardingGroups.Count} boarding groups ({individualPassengers.Count} individuals, {passengersByFamily.Count} families).");
             return boardingGroups;
+        }
+
+        // Helper method to parse a single line.
+        // Returns a tuple: (Passenger? passenger, string? familyId)
+        // Returns (null, null) if parsing fails, and logs a warning.
+        private static (Passenger?, string?) ParseLine(string line, int lineNumber)
+        {
+            string[] parts = line.Split(',');
+            // Expecting ID,Type,Revenue,FamilyID,WindowPref - needs at least 5 parts for full parsing
+            if (parts.Length < 5)
+            {
+                Console.WriteLine($"Warning: Skipping malformed line {lineNumber} (expected 5+ parts): {line}");
+                return (null, null);
+            }
+
+            try
+            {
+                // Parse required fields
+                // int id = int.Parse(parts[0].Trim()); // ID not parsed currently
+                bool isAdult = parts[1].Trim().Equals("Adult", StringComparison.OrdinalIgnoreCase);
+                double revenue = double.Parse(parts[2].Trim(), CultureInfo.InvariantCulture);
+                string familyId = parts[3].Trim();
+                bool wantsWindow = parts[4].Trim().Equals("Yes", StringComparison.OrdinalIgnoreCase);
+                int seatsNeeded = 1; // Assuming 1 seat per passenger
+
+                 if (string.IsNullOrEmpty(familyId)) {
+                     Console.WriteLine($"Warning: Skipping line {lineNumber} due to empty FamilyID: {line}");
+                     return (null, null); // Treat empty FamilyID as an error for grouping
+                 }
+
+                var passenger = new Passenger(isAdult, revenue, seatsNeeded, wantsWindow);
+                return (passenger, familyId);
+            }
+            catch (FormatException ex)
+            {
+                Console.WriteLine($"Warning: Skipping line {lineNumber} due to parsing error ({ex.Message}): {line}");
+                return (null, null);
+            }
+            catch (Exception ex) // Catch other potential errors per line
+            {
+                Console.WriteLine($"Warning: Skipping line {lineNumber} due to unexpected error ({ex.Message}): {line}");
+                return (null, null);
+            }
         }
     }
 } 
