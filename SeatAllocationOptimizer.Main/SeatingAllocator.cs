@@ -128,12 +128,15 @@ namespace SeatAllocationOptimizer.Main
             return new AllocationResult(_seatMap, totalRevenue, finalUnseated);
         }
 
-        // Attempts to seat a group starting from the current position
+        // Attempts to seat a group starting from the current position, considering window preference
         private bool TrySeatGroup(BoardingGroup group, ref int startRow, ref int startSeat)
         {
             int seatsNeeded = group.SeatsNeeded;
+            bool wantsWindow = group.Passengers.Any(p => p.WantsWindowSeat);
 
-             // Iterate through rows starting from startRow
+            (int row, int seat)? fallbackOption = null; // Store a potential non-preferred location
+
+            // Iterate through rows starting from startRow
             for (int r = startRow; r < _planeRows; r++)
             {
                 // Determine starting seat for this row
@@ -142,75 +145,114 @@ namespace SeatAllocationOptimizer.Main
                 // Check remaining seats in the current row
                 while (s <= _seatsPerRow - seatsNeeded)
                 {
-                    // Check if the block of seats is available
+                    // Check if the block of seats is physically available
                     bool blockAvailable = true;
                     for (int i = 0; i < seatsNeeded; i++)
                     {
                         if (_seatMap[r, s + i] != null)
                         {
                             blockAvailable = false;
+                            s += i; // Jump ahead: no point checking blocks starting within this occupied space
                             break;
                         }
                     }
 
                     if (blockAvailable)
                     {
-                        // Additional check for family groups: ensure no child is isolated
+                        bool isValidFamilyPlacement = true;
+                        // Additional check for family groups: ensure valid placement
                         if (group.IsFamily && group.FamilyGroup!.HasChildren) {
-                            if (!IsFamilyPlacementValid(group.FamilyGroup, r, s, seatsNeeded)) {
-                                // Invalid placement according to family rules, treat block as unavailable
-                                blockAvailable = false;
-                                // Continue searching from the next seat (s++ below)
-                            } 
+                            isValidFamilyPlacement = IsFamilyPlacementValid(group.FamilyGroup!, r, s, seatsNeeded);
                         }
-                    }
 
-                    // Place the group if block is still available
-                    if (blockAvailable)
-                    {
-                        // Place the group
-                        for (int i = 0; i < seatsNeeded; i++)
+                        if (isValidFamilyPlacement)
                         {
-                            _seatMap[r, s + i] = group;
+                            bool satisfiesPreference = !wantsWindow || DoesBlockHaveWindow(s, seatsNeeded);
+
+                            if (satisfiesPreference)
+                            {
+                                // Preferred placement found, place the group
+                                PlaceGroup(group, r, s, seatsNeeded);
+                                // Update the global position for the *next* attempt
+                                UpdateGlobalPosition(ref startRow, ref startSeat, r, s + seatsNeeded);
+                                return true; // Group seated successfully in preferred spot
+                            }
+                            else if (fallbackOption == null)
+                            {
+                                // Block is valid but doesn't satisfy window preference.
+                                // Store it as a fallback if we haven't found one yet.
+                                fallbackOption = (r, s);
+                            }
                         }
-
-                        // Update the global position for the *next* attempt
-                        startRow = r;
-                        startSeat = s + seatsNeeded;
-                        // Handle moving to next row if current is filled
-                         if (startSeat >= _seatsPerRow) {
-                            startRow++;
-                            startSeat = 0;
-                         }
-
-                        return true; // Group seated successfully
+                        // If family placement is invalid, blockAvailable becomes effectively false for this spot.
                     }
-                    else
-                    {
-                        // Move to the next possible starting seat in this row
-                        s++;
-                    }
+
+                    // Move to the next possible starting seat in this row
+                    s++;
                 }
-                 // If we finish checking row 'r' and the group wasn't seated,
-                 // and if we started checking this row from the beginning (s=0),
-                 // no need to re-check this row in future calls for *this specific group search*.
-                 // The outer loop will move to the next row (r++).
-                 // If r == startRow, it means we started mid-row, so we must continue to the next row.
+                // Finished checking row 'r'
             }
 
-            // If we've checked all rows from startRow onwards and couldn't seat the group
+            // If we finished searching all rows without finding a preferred spot,
+            // check if we found a fallback option.
+            if (fallbackOption.HasValue)
+            {
+                (int r_fb, int s_fb) = fallbackOption.Value;
+                Console.WriteLine($"Placing group {group.Identifier} in non-preferred (non-window) fallback seat at [{r_fb},{s_fb}].");
+                PlaceGroup(group, r_fb, s_fb, seatsNeeded);
+                // Update the global position based on where we actually placed them
+                UpdateGlobalPosition(ref startRow, ref startSeat, r_fb, s_fb + seatsNeeded);
+                return true; // Group seated successfully in fallback spot
+            }
+
+            // If we've checked all rows and couldn't seat the group anywhere (preferred or fallback)
             return false;
         }
 
+        // Helper to check if a block includes a window seat
+        private bool DoesBlockHaveWindow(int startSeatIndex, int seatsNeeded)
+        {
+             // Window seats are at index 0 and _seatsPerRow - 1
+             bool startsAtWindow = (startSeatIndex == 0);
+             bool endsAtWindow = (startSeatIndex + seatsNeeded - 1 == _seatsPerRow - 1);
+             return startsAtWindow || endsAtWindow;
+        }
+
+        // Helper to place the group in the seat map
+        private void PlaceGroup(BoardingGroup group, int row, int startSeat, int seatsNeeded)
+        {
+            for (int i = 0; i < seatsNeeded; i++)
+            {
+                _seatMap[row, startSeat + i] = group;
+            }
+        }
+
+        // Helper to update the global startRow/startSeat pointers
+        private void UpdateGlobalPosition(ref int globalStartRow, ref int globalStartSeat, int placedRow, int nextSeatInRow)
+        {
+            globalStartRow = placedRow;
+            globalStartSeat = nextSeatInRow;
+            // Handle moving to next row if current is filled
+            if (globalStartSeat >= _seatsPerRow)
+            {
+                globalStartRow++;
+                globalStartSeat = 0;
+            }
+        }
+
         // Helper to check if a potential family placement keeps children adjacent to adults within the proposed block
+        // Assumes the family members from the list are placed sequentially into the block.
+        // Current limitations: Does not explicitly handle aisle separation within the block (e.g., for 3+3 seating).
+        // It only ensures a child has an adult neighbor immediately to the left or right within the assigned seat block.
         private bool IsFamilyPlacementValid(Family family, int row, int startSeat, int seatsNeeded)
         {
             List<Passenger> members = family.Members;
             // Basic checks
-            if (members.Count == 0) return true; // Empty family is valid?
+            if (members.Count == 0) return true; // Empty family is valid? Maybe should be false? Or handled earlier.
             if (members.Count != seatsNeeded) {
-                 Console.WriteLine($"Warning: Skipping family validity check for {family.FamilyId} - member count ({members.Count}) != seats needed ({seatsNeeded}).");
-                 return true; // Or false? Let's assume true to not block unnecessarily.
+                 // Log an error instead of just a warning, and return false as this indicates a logic error elsewhere.
+                 Console.Error.WriteLine($"Error: Family validity check failed for {family.FamilyId} - member count ({members.Count}) does not match seats needed ({seatsNeeded}). This indicates a problem before calling IsFamilyPlacementValid.");
+                 return false; // Return false because the placement premise is wrong.
             }
             bool hasChild = family.HasChildren;
             if (!hasChild) return true; // No children, no adjacency requirement
@@ -223,39 +265,46 @@ namespace SeatAllocationOptimizer.Main
             }
 
             // Simulate the placement within the block to check adjacency accurately.
-            // We assume members are placed sequentially into the block [startSeat...startSeat + seatsNeeded - 1].
-            // This assumption itself might need refinement if placement order within a family matters.
+            // Check each position in the potential block.
             for (int i = 0; i < seatsNeeded; i++)
             {
-                Passenger currentPassenger = members[i]; 
-                if (!currentPassenger.IsAdult)
+                Passenger currentPassenger = members[i]; // Assume members[i] goes into seat 'startSeat + i'
+                if (!currentPassenger.IsAdult) // Found a child
                 {
-                    // This passenger is a child, check neighbors within the block.
+                    // Check if this child has at least one adult neighbor *within the allocated block*.
                     bool adultNeighborFound = false;
-                    
-                    // Check left neighbor (seat i-1)
-                    if (i > 0 && members[i - 1].IsAdult)
+
+                    // Check left neighbor (seat i-1 within the block)
+                    if (i > 0)
                     {
-                        adultNeighborFound = true;
-                    }
-                    
-                    // Check right neighbor (seat i+1)
-                    if (!adultNeighborFound && i < seatsNeeded - 1 && members[i + 1].IsAdult)
-                    {
-                        adultNeighborFound = true;
+                        Passenger leftNeighbor = members[i - 1];
+                        if (leftNeighbor.IsAdult)
+                        {
+                            adultNeighborFound = true;
+                        }
                     }
 
-                    // If no adult neighbor found *within the family's assigned block*
+                    // Check right neighbor (seat i+1 within the block)
+                    if (!adultNeighborFound && i < seatsNeeded - 1)
+                    {
+                        Passenger rightNeighbor = members[i + 1];
+                        if (rightNeighbor.IsAdult)
+                        {
+                            adultNeighborFound = true;
+                        }
+                    }
+
+                    // If after checking both sides *within the block*, no adult neighbor was found for this child.
                     if (!adultNeighborFound)
                     {
-                         // Log for debugging
-                        Console.WriteLine($"Debug: Invalid placement for family {family.FamilyId} at [{row},{startSeat}] - child {i+1}/{seatsNeeded} has no adjacent adult within the block.");
-                        return false; // Found an isolated child
+                         Console.WriteLine($"Invalid placement for family {family.FamilyId}: Child at relative position {i} has no adjacent adult within the block.");
+                        return false; // This placement is invalid according to the rule.
                     }
                 }
             }
 
-            return true; // All children have an adjacent adult within the block
+            // If all children have at least one adjacent adult within the block.
+            return true; // Placement is valid
         }
 
         private double CalculateRevenueFromMap()
