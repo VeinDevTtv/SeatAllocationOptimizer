@@ -3,18 +3,38 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using SeatAllocationOptimizer.Main; // Add namespace for our new classes
+using System.Globalization; // For parsing args
 
 // Defines a class for the main operations related to passenger and seat management.
 public class MainClass
 {
-    // Constants for plane dimensions
-    public static int planeWidth = 6; // Width of the plane in terms of seats per row
-    public static int planeRows = 33; // Number of rows in the plane (for ~200 seats config)
-    // Removed bonusSeats and totalSeats as they are not used in the new allocator logic
+    // Default Constants for plane dimensions
+    public const int DefaultPlaneWidth = 6; // Default width
+    public const int DefaultPlaneRows = 33; // Default rows (for ~200 seats config)
 
     // Main entry point for the program
     public static void Main(string[] args)
     {
+        // --- Configuration ---
+        int planeRows = DefaultPlaneRows;
+        int planeWidth = DefaultPlaneWidth;
+
+        if (args.Length >= 2) {
+            bool rowsParsed = int.TryParse(args[0], out int parsedRows);
+            bool widthParsed = int.TryParse(args[1], out int parsedWidth);
+            if (rowsParsed && widthParsed && parsedRows > 0 && parsedWidth > 0) {
+                planeRows = parsedRows;
+                planeWidth = parsedWidth;
+                Console.WriteLine($"Using custom dimensions: Rows={planeRows}, Width={planeWidth}");
+            } else {
+                Console.WriteLine("Invalid command-line arguments for dimensions. Using defaults.");
+                Console.WriteLine("Usage: dotnet run [numberOfRows] [seatsPerRow]");
+            }
+        } else {
+             Console.WriteLine($"Using default dimensions: Rows={planeRows}, Width={planeWidth}");
+        }
+        // --- End Configuration ---
+
         // Measure program execution time
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.Start();
@@ -29,7 +49,6 @@ public class MainClass
         List<BoardingGroup> boardingGroups = DataParser.ParseInput(inputFile);
 
         // 2. Configure and run the Allocator
-        // Using updated dimensions from constants
         int rows = planeRows;
         int seatsPerRow = planeWidth;
         var allocator = new SeatingAllocator(planeRows: rows, seatsPerRow: seatsPerRow);

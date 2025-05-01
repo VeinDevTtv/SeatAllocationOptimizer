@@ -10,7 +10,7 @@ namespace SeatAllocationOptimizer.Main
         private readonly int _seatsPerRow;
         private BoardingGroup?[,] _seatMap; // Using nullable BoardingGroup to store which group is in which seat
 
-        public SeatingAllocator(int planeRows = 4, int seatsPerRow = 5) // Default based on README initial config (20 seats / 4 rows)
+        public SeatingAllocator(int planeRows = MainClass.DefaultPlaneRows, int seatsPerRow = MainClass.DefaultPlaneWidth)
         {
             // README mentions 20 seats across 4 rows initially, but also planeRows = 33 for 200 seats.
             // Let's make it configurable. Assuming 200 seats might mean 33 rows * 6 seats/row + 2 extra? Or maybe 40*5? Let's stick to configurable.
@@ -202,49 +202,54 @@ namespace SeatAllocationOptimizer.Main
             return false;
         }
 
-        // Helper to check if a potential family placement keeps children adjacent to adults
+        // Helper to check if a potential family placement keeps children adjacent to adults within the proposed block
         private bool IsFamilyPlacementValid(Family family, int row, int startSeat, int seatsNeeded)
         {
-            // Simplistic check: Iterate through the seats assigned to this family.
-            // If a seat holds a child, check if at least one adjacent seat (within the block) holds an adult from the same family.
-            // Note: This assumes the family members list order maps directly to seating order, which isn't guaranteed by the current placement.
-            // A more robust check would need to map specific members to specific seats [r, s+i].
-            // For now, let's assume a basic check: does *any* child lack *any* adjacent adult within the block?
-
             List<Passenger> members = family.Members;
+            // Basic checks
+            if (members.Count == 0) return true; // Empty family is valid?
             if (members.Count != seatsNeeded) {
-                 // This implies SeatsNeeded calculation might be different from member count - handle defensively
-                 // For now, skip the check if counts don't match, as seating assignment is unclear.
-                 Console.WriteLine($"Warning: Skipping family validity check for {family.FamilyId} - member count mismatch.");
-                 return true; 
+                 Console.WriteLine($"Warning: Skipping family validity check for {family.FamilyId} - member count ({members.Count}) != seats needed ({seatsNeeded}).");
+                 return true; // Or false? Let's assume true to not block unnecessarily.
             }
+            bool hasChild = family.HasChildren;
+            if (!hasChild) return true; // No children, no adjacency requirement
 
             bool hasAdult = members.Any(p => p.IsAdult);
-            if (!hasAdult && family.HasChildren) {
-                Console.WriteLine($"Warning: Cannot seat family {family.FamilyId} - contains children but no adults.");
-                return false; // Cannot satisfy adjacency if no adults exist
+            if (!hasAdult) {
+                // Family has children but no adults - invalid placement
+                 Console.WriteLine($"Warning: Cannot seat family {family.FamilyId} - contains children but no adults.");
+                return false;
             }
 
+            // Simulate the placement within the block to check adjacency accurately.
+            // We assume members are placed sequentially into the block [startSeat...startSeat + seatsNeeded - 1].
+            // This assumption itself might need refinement if placement order within a family matters.
             for (int i = 0; i < seatsNeeded; i++)
             {
-                Passenger currentPassenger = members[i]; // Assumption: members[i] goes to seat startSeat + i
+                Passenger currentPassenger = members[i]; 
                 if (!currentPassenger.IsAdult)
                 {
-                    // Check left neighbor (if within block)
+                    // This passenger is a child, check neighbors within the block.
                     bool adultNeighborFound = false;
+                    
+                    // Check left neighbor (seat i-1)
                     if (i > 0 && members[i - 1].IsAdult)
                     {
                         adultNeighborFound = true;
                     }
-                    // Check right neighbor (if within block)
+                    
+                    // Check right neighbor (seat i+1)
                     if (!adultNeighborFound && i < seatsNeeded - 1 && members[i + 1].IsAdult)
                     {
                         adultNeighborFound = true;
                     }
 
+                    // If no adult neighbor found *within the family's assigned block*
                     if (!adultNeighborFound)
                     {
-                        Console.WriteLine($"Debug: Invalid placement for family {family.FamilyId} at [{row},{startSeat}] - child at index {i} has no adjacent adult within the block.");
+                         // Log for debugging
+                        Console.WriteLine($"Debug: Invalid placement for family {family.FamilyId} at [{row},{startSeat}] - child {i+1}/{seatsNeeded} has no adjacent adult within the block.");
                         return false; // Found an isolated child
                     }
                 }
