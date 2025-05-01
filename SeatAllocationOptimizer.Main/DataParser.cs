@@ -26,9 +26,24 @@ namespace SeatAllocationOptimizer.Main
                         lineNumber++;
                         if (string.IsNullOrWhiteSpace(line)) continue; // Skip empty lines
 
-                        string[] parts = line.Split(',');
-                        if (parts.Length < 5) // Expecting at least 5 parts now (including window pref)
+                        Passenger? parsedPassenger = ParseLine(line, lineNumber);
+                        if (parsedPassenger != null)
                         {
+                            // Need family ID from the line again for grouping
+                            string[] parts = line.Split(',');
+                            if (parts.Length >= 4)
+                            {
+                                string familyId = parts[3].Trim();
+                                if (familyId == "-")
+                                {
+                                    individualPassengers.Add(parsedPassenger);
+                                }
+                                else
+                                {
+                                    if (!passengersByFamily.ContainsKey(familyId))
+                                    {
+                                        passengersByFamily[familyId] = new List<Passenger>();
+                                    }
                             Console.WriteLine($"Warning: Skipping malformed line {lineNumber} (expected 5+ parts): {line}");
                             continue;
                         }
