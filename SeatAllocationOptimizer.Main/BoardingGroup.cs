@@ -6,6 +6,7 @@ namespace SeatAllocationOptimizer.Main
     {
         public Passenger? IndividualPassenger { get; private set; }
         public Family? FamilyGroup { get; private set; }
+        public string GroupId { get; private set; }
 
         public bool IsFamily => FamilyGroup != null;
 
@@ -18,6 +19,7 @@ namespace SeatAllocationOptimizer.Main
         {
             IndividualPassenger = passenger ?? throw new ArgumentNullException(nameof(passenger));
             FamilyGroup = null;
+            GroupId = $"Indv-{passenger.GetHashCode() % 10000}";
         }
 
         // Constructor for family group
@@ -25,6 +27,7 @@ namespace SeatAllocationOptimizer.Main
         {
             FamilyGroup = family ?? throw new ArgumentNullException(nameof(family));
             IndividualPassenger = null;
+            GroupId = family.FamilyId;
         }
 
         // TODO: Consider if any other methods are needed.

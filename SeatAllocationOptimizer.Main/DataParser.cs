@@ -94,7 +94,7 @@ namespace SeatAllocationOptimizer.Main
             // Add families
             foreach (var kvp in passengersByFamily)
             {
-                var family = new Family();
+                var family = new Family(kvp.Key); // Pass familyId to constructor
                 foreach (var member in kvp.Value)
                 {
                     family.AddMember(member);

@@ -155,6 +155,19 @@ namespace SeatAllocationOptimizer.Main
 
                     if (blockAvailable)
                     {
+                        // Additional check for family groups: ensure no child is isolated
+                        if (group.IsFamily && group.FamilyGroup!.HasChildren) {
+                            if (!IsFamilyPlacementValid(group.FamilyGroup, r, s, seatsNeeded)) {
+                                // Invalid placement according to family rules, treat block as unavailable
+                                blockAvailable = false;
+                                // Continue searching from the next seat (s++ below)
+                            } 
+                        }
+                    }
+
+                    // Place the group if block is still available
+                    if (blockAvailable)
+                    {
                         // Place the group
                         for (int i = 0; i < seatsNeeded; i++)
                         {
@@ -189,6 +202,56 @@ namespace SeatAllocationOptimizer.Main
             return false;
         }
 
+        // Helper to check if a potential family placement keeps children adjacent to adults
+        private bool IsFamilyPlacementValid(Family family, int row, int startSeat, int seatsNeeded)
+        {
+            // Simplistic check: Iterate through the seats assigned to this family.
+            // If a seat holds a child, check if at least one adjacent seat (within the block) holds an adult from the same family.
+            // Note: This assumes the family members list order maps directly to seating order, which isn't guaranteed by the current placement.
+            // A more robust check would need to map specific members to specific seats [r, s+i].
+            // For now, let's assume a basic check: does *any* child lack *any* adjacent adult within the block?
+
+            List<Passenger> members = family.Members;
+            if (members.Count != seatsNeeded) {
+                 // This implies SeatsNeeded calculation might be different from member count - handle defensively
+                 // For now, skip the check if counts don't match, as seating assignment is unclear.
+                 Console.WriteLine($"Warning: Skipping family validity check for {family.FamilyId} - member count mismatch.");
+                 return true; 
+            }
+
+            bool hasAdult = members.Any(p => p.IsAdult);
+            if (!hasAdult && family.HasChildren) {
+                Console.WriteLine($"Warning: Cannot seat family {family.FamilyId} - contains children but no adults.");
+                return false; // Cannot satisfy adjacency if no adults exist
+            }
+
+            for (int i = 0; i < seatsNeeded; i++)
+            {
+                Passenger currentPassenger = members[i]; // Assumption: members[i] goes to seat startSeat + i
+                if (!currentPassenger.IsAdult)
+                {
+                    // Check left neighbor (if within block)
+                    bool adultNeighborFound = false;
+                    if (i > 0 && members[i - 1].IsAdult)
+                    {
+                        adultNeighborFound = true;
+                    }
+                    // Check right neighbor (if within block)
+                    if (!adultNeighborFound && i < seatsNeeded - 1 && members[i + 1].IsAdult)
+                    {
+                        adultNeighborFound = true;
+                    }
+
+                    if (!adultNeighborFound)
+                    {
+                        Console.WriteLine($"Debug: Invalid placement for family {family.FamilyId} at [{row},{startSeat}] - child at index {i} has no adjacent adult within the block.");
+                        return false; // Found an isolated child
+                    }
+                }
+            }
+
+            return true; // All children have an adjacent adult within the block
+        }
 
         private double CalculateRevenueFromMap()
         {
@@ -223,9 +286,10 @@ namespace SeatAllocationOptimizer.Main
                      if (group == null) {
                          seatDisplay = " --- ";
                      } else {
-                         // Display 'F' for family, 'I' for individual, maybe revenue/seat?
-                         // Let's use group ID for simplicity now - need to add ID to BoardingGroup or use hashcode
-                         seatDisplay = $" {(group.IsFamily ? "Fam" : "Ind")}:{group.GetHashCode() % 1000:D3} "; // Simple temp ID
+                         // Use the GroupId for display
+                         // Pad or truncate for consistent width (e.g., 5 chars)
+                         string displayId = group.GroupId.Length > 5 ? group.GroupId.Substring(0, 5) : group.GroupId.PadRight(5);
+                         seatDisplay = $" {displayId} ";
                      }
                      Console.Write(seatDisplay);
                      if (s < _seatsPerRow - 1) Console.Write("|");
