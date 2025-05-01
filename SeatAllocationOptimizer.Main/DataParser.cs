@@ -27,9 +27,9 @@ namespace SeatAllocationOptimizer.Main
                         if (string.IsNullOrWhiteSpace(line)) continue; // Skip empty lines
 
                         string[] parts = line.Split(',');
-                        if (parts.Length < 4) // Expecting at least 4 parts
+                        if (parts.Length < 5) // Expecting at least 5 parts now (including window pref)
                         {
-                            Console.WriteLine($"Warning: Skipping malformed line {lineNumber}: {line}");
+                            Console.WriteLine($"Warning: Skipping malformed line {lineNumber} (expected 5+ parts): {line}");
                             continue;
                         }
 
@@ -41,9 +41,10 @@ namespace SeatAllocationOptimizer.Main
                             double revenue = double.Parse(parts[2].Trim(), CultureInfo.InvariantCulture);
                             string familyId = parts[3].Trim();
                             int seatsNeeded = 1; // Assuming 1 seat per passenger based on current classes
+                            bool wantsWindow = parts[4].Trim().Equals("Yes", StringComparison.OrdinalIgnoreCase);
                             // TODO: Consider if input format could specify >1 seat needed per passenger
 
-                            var passenger = new Passenger(isAdult, revenue, seatsNeeded);
+                            var passenger = new Passenger(isAdult, revenue, seatsNeeded, wantsWindow);
 
                             if (familyId == "-")
                             {

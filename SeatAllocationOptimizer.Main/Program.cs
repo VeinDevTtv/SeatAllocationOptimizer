@@ -7,11 +7,10 @@ using SeatAllocationOptimizer.Main; // Add namespace for our new classes
 // Defines a class for the main operations related to passenger and seat management.
 public class MainClass
 {
-    // Constants for plane dimensions and seat calculations - Keep for now, might be used by Allocator constructor
-    public static int planeWidth = 6; // Width of the plane in terms of seats per row - Note: SeatingAllocator uses seatsPerRow
-    public static int planeRows = 3; // Number of rows in the plane - Note: SeatingAllocator uses planeRows
-    public static int bonusSeats = 2; // Additional seats available - Note: SeatingAllocator doesn't explicitly use this concept currently
-    public static int totalSeats = (planeRows * planeWidth) + bonusSeats; // Total number of seats - Note: SeatingAllocator calculates total internally
+    // Constants for plane dimensions
+    public static int planeWidth = 6; // Width of the plane in terms of seats per row
+    public static int planeRows = 33; // Number of rows in the plane (for ~200 seats config)
+    // Removed bonusSeats and totalSeats as they are not used in the new allocator logic
 
     // Main entry point for the program
     public static void Main(string[] args)
@@ -30,13 +29,9 @@ public class MainClass
         List<BoardingGroup> boardingGroups = DataParser.ParseInput(inputFile);
 
         // 2. Configure and run the Allocator
-        // Using dimensions from constants - adjust if needed or pass via args
-        // Note: The current SeatingAllocator doesn't use 'bonusSeats' directly.
-        // The README mentioned 4 rows/5 seats initially, then 33 rows for 200 seats. Let's use the constants for now.
+        // Using updated dimensions from constants
         int rows = planeRows;
         int seatsPerRow = planeWidth;
-        // If totalSeats implies a different layout (e.g., including bonus seats), adjust rows/seatsPerRow calculation needed.
-        // For now, using the defined rows and width.
         var allocator = new SeatingAllocator(planeRows: rows, seatsPerRow: seatsPerRow);
 
         // 3. Allocate Seats
@@ -69,39 +64,8 @@ public class MainClass
         Console.WriteLine($"Time taken: {stopwatch.Elapsed}");
     }
 
-    /* --- Commenting out Old Logic ---
-
-    // Prints the seating arrangement in the console
-    public static void printMap(Passenger[,] seatMap)
-    {
-        // ... (old implementation) ...
-    }
-
-    // Calculate and return total revenue from the seat map
-    public static double calculateRevenue(Passenger[,] seatMap)
-    {
-        // ... (old implementation) ...
-    }
-
-    // Helper method to set up boarding groups from passenger list
-    public static PriorityQueue<BoardingGroup, BoardingGroup> dataSetupHelper(List<Passenger> passengers)
-    {
-        // ... (old implementation, uses different Passenger/Family/BoardingGroup) ...
-    }
-
-    // Determines the ideal seating arrangement for maximum revenue
-    public static Passenger[,] idealRevenue(PriorityQueue<BoardingGroup, BoardingGroup> boardingGroups)
-    {
-         // ... (old implementation) ...
-    }
-
-    // Processes each boarding group to fit into the seating map
-    public static Passenger[,] processBoardingGroup(Passenger[,] seatMap, BoardingGroup bg, int curRow, int curRowSeat, int maxSeatsPerRow)
-    {
-         // ... (old implementation) ...
-    }
-
-    */ // --- End Commented Out Old Logic ---
+    /* --- Removing Old Logic --- */
+    // Removed old printMap, calculateRevenue, dataSetupHelper, idealRevenue, processBoardingGroup methods
 
 }
 
